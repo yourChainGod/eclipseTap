@@ -13,10 +13,10 @@ async function initWasm() {
 function showModal(taskId = null) {
     const modal = document.getElementById('taskModal');
     const modalTitle = document.getElementById('modalTitle');
-    const submitButton = document.getElementById('submitButton');
     
     if (taskId) {
-        // 编辑模式
+        // 编辑模式，先停止任务
+        toggleTask(taskId);
         modalTitle.textContent = '编辑任务';
         currentEditingTask = taskId;
         // 填充现有数据
@@ -35,7 +35,7 @@ function showModal(taskId = null) {
         currentEditingTask = null;
         clearForm();
     }
-
+    
     modal.classList.remove('hidden');
     modal.classList.add('flex');
 }
@@ -92,9 +92,6 @@ function createTask(mainAddress, userPrivateKey, minDelay, maxDelay) {
 }
 
 function updateTask(taskId, mainAddress, userPrivateKey, minDelay, maxDelay) {
-    // 停止旧任务和定时器
-    stopTask(taskId);
-    
     // 更新任务卡片
     const taskCard = document.getElementById(taskId);
     taskCard.querySelector('p:nth-child(1)').textContent = 
@@ -110,42 +107,110 @@ function updateTask(taskId, mainAddress, userPrivateKey, minDelay, maxDelay) {
     // 重新启动任务
     window.startClickerTask(taskId, mainAddress, userPrivateKey, minDelay, maxDelay);
     
+    // 更新按钮和状态显示
+    const toggleBtn = taskCard.querySelector('.toggle-btn');
+    const statusSpan = taskCard.querySelector('.status-running, .status-stopped');
+    
+    toggleBtn.textContent = '停止';
+    toggleBtn.className = 'toggle-btn flex-1 px-3 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-md hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500';
+    statusSpan.className = 'status-running px-2 py-1 text-sm rounded-full bg-green-100 text-green-800';
+    statusSpan.textContent = '运行中';
+    
     // 重新启动草的数量更新
     startGrassUpdate(taskId);
-    
-    // 更新状态显示
-    const statusSpan = taskCard.querySelector('.status-running, .status-stopped');
-    statusSpan.className = 'status-running';
-    statusSpan.textContent = '运行中';
 }
 
 function createTaskCard(taskId, mainAddress, minDelay, maxDelay) {
     const div = document.createElement('div');
-    div.className = 'bg-white rounded-lg shadow-sm border border-gray-200 p-6 space-y-4';
+    div.className = 'bg-white rounded-lg shadow-md hover:shadow-lg transition-shadow duration-200 p-6 space-y-4';
     div.id = taskId;
     div.innerHTML = `
         <div class="flex items-center justify-between">
-            <h3 class="text-lg font-semibold text-gray-800">任务 ${taskId.split('-')[1]}</h3>
-            <span class="status-running px-2 py-1 text-sm rounded-full bg-green-100 text-green-800">运行中</span>
+            <h3 class="text-lg font-semibold text-gray-800 flex items-center">
+                <span class="material-icons mr-2 text-blue-500">task_alt</span>
+                任务 ${taskId.split('-')[1]}
+            </h3>
+            <span class="status-running px-3 py-1 text-sm rounded-full bg-green-100 text-green-800 flex items-center">
+                <span class="material-icons text-sm mr-1">radio_button_checked</span>
+                运行中
+            </span>
         </div>
-        <div class="space-y-2">
-            <p class="text-gray-600">地址: ${mainAddress.slice(0, 6)}...${mainAddress.slice(-4)}</p>
-            <p class="text-gray-600">延迟: ${minDelay}-${maxDelay}ms</p>
-            <p class="flex items-center space-x-2">
+        <div class="space-y-3">
+            <p class="text-gray-600 flex items-center">
+                <span class="material-icons text-sm mr-2">account_balance_wallet</span>
+                地址: ${mainAddress.slice(0, 6)}...${mainAddress.slice(-4)}
+            </p>
+            <p class="text-gray-600 flex items-center">
+                <span class="material-icons text-sm mr-2">timer</span>
+                延迟: ${minDelay}-${maxDelay}ms
+            </p>
+            <div class="flex items-center space-x-2 bg-gray-50 p-3 rounded-lg">
+                <span class="material-icons text-green-600">grass</span>
                 <span class="text-gray-600">草的数量:</span>
                 <span class="text-lg font-semibold text-green-600" id="grass-${taskId}">0</span>
-            </p>
+            </div>
         </div>
-        <div class="flex space-x-3 mt-4">
-            <button onclick="stopTask('${taskId}')" class="flex-1 px-3 py-2 text-sm font-medium text-red-600 bg-red-50 rounded-md hover:bg-red-100 focus:outline-none focus:ring-2 focus:ring-red-500">
+        <div class="flex space-x-3 mt-6">
+            <button onclick="toggleTask('${taskId}')" 
+                    class="toggle-btn mui-btn flex-1 px-4 py-2 rounded-md flex items-center justify-center transition-all duration-200
+                           text-white bg-red-500 hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
+                <span class="material-icons text-sm mr-2">stop</span>
                 停止
             </button>
-            <button onclick="showModal('${taskId}')" class="flex-1 px-3 py-2 text-sm font-medium text-blue-600 bg-blue-50 rounded-md hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <button onclick="showModal('${taskId}')" 
+                    class="mui-btn flex-1 px-4 py-2 rounded-md flex items-center justify-center transition-all duration-200
+                           text-white bg-blue-500 hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
+                <span class="material-icons text-sm mr-2">edit</span>
                 编辑
             </button>
         </div>
     `;
     return div;
+}
+
+function toggleTask(taskId) {
+    const taskCard = document.getElementById(taskId);
+    const toggleBtn = taskCard.querySelector('.toggle-btn');
+    const statusSpan = taskCard.querySelector('.status-running, .status-stopped');
+    
+    if (toggleBtn.innerHTML.includes('停止')) {
+        // 停止任务
+        window.stopClickerTask(taskId);
+        toggleBtn.innerHTML = `
+            <span class="material-icons text-sm mr-2">play_arrow</span>
+            开始
+        `;
+        toggleBtn.className = 'toggle-btn mui-btn flex-1 px-4 py-2 rounded-md flex items-center justify-center transition-all duration-200 text-white bg-green-500 hover:bg-green-600 focus:outline-none focus:ring-2 focus:ring-green-500 focus:ring-offset-2';
+        statusSpan.innerHTML = `
+            <span class="material-icons text-sm mr-1">radio_button_unchecked</span>
+            已停止
+        `;
+        statusSpan.className = 'status-stopped px-3 py-1 text-sm rounded-full bg-red-100 text-red-800 flex items-center';
+        
+        if (grassUpdateIntervals[taskId]) {
+            clearInterval(grassUpdateIntervals[taskId]);
+            delete grassUpdateIntervals[taskId];
+        }
+    } else {
+        // 重启任务
+        const address = taskCard.getAttribute('data-address');
+        const privateKey = taskCard.getAttribute('data-private-key');
+        const delays = taskCard.getAttribute('data-delays').split('-').map(Number);
+        
+        window.startClickerTask(taskId, address, privateKey, delays[0], delays[1]);
+        toggleBtn.innerHTML = `
+            <span class="material-icons text-sm mr-2">stop</span>
+            停止
+        `;
+        toggleBtn.className = 'toggle-btn mui-btn flex-1 px-4 py-2 rounded-md flex items-center justify-center transition-all duration-200 text-white bg-red-500 hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2';
+        statusSpan.innerHTML = `
+            <span class="material-icons text-sm mr-1">radio_button_checked</span>
+            运行中
+        `;
+        statusSpan.className = 'status-running px-3 py-1 text-sm rounded-full bg-green-100 text-green-800 flex items-center';
+        
+        startGrassUpdate(taskId);
+    }
 }
 
 function startGrassUpdate(taskId) {
@@ -186,28 +251,18 @@ function updateGrassCount(taskId) {
 }
 
 function stopTask(taskId) {
-    try {
-        window.stopClickerTask(taskId);
-        const statusSpan = document.querySelector(`#${taskId} .status-running`);
-        if (statusSpan) {
-            statusSpan.className = 'px-2 py-1 text-sm rounded-full bg-red-100 text-red-800';
-            statusSpan.textContent = '已停止';
-        }
-    } catch (error) {
-        console.error('停止任务时出错:', error);
-    } finally {
-        if (grassUpdateIntervals[taskId]) {
-            clearInterval(grassUpdateIntervals[taskId]);
-            delete grassUpdateIntervals[taskId];
-        }
+    const taskCard = document.getElementById(taskId);
+    const toggleBtn = taskCard.querySelector('.toggle-btn');
+    if (toggleBtn.textContent.trim() === '停止') {
+        toggleTask(taskId);
     }
 }
 
 function clearForm() {
     document.getElementById('mainAddress').value = '';
     document.getElementById('userPrivateKey').value = '';
-    document.getElementById('minDelay').value = '0';
-    document.getElementById('maxDelay').value = '0';
+    document.getElementById('minDelay').value = '1000';
+    document.getElementById('maxDelay').value = '2000';
 }
 
 function toggleGuide() {
@@ -224,10 +279,61 @@ function toggleGuide() {
     }
 }
 
+// 添加一个新的函数来检查是否是首次访问
+function isFirstVisit() {
+    if (!localStorage.getItem('hasVisited')) {
+        localStorage.setItem('hasVisited', 'true');
+        return true;
+    }
+    return false;
+}
+
+// 修改 DOMContentLoaded 事件处理函数
 document.addEventListener('DOMContentLoaded', function() {
-    // 初始展开使用说明
-    toggleGuide();
+    // 如果是首次访问，显示使用说明
+    if (isFirstVisit()) {
+        setTimeout(() => {
+            showGuide();
+        }, 500); // 延迟500ms显示，让页面完全加载
+    }
 });
+
+// 使用说明相关函数
+function showGuide() {
+    const modal = document.getElementById('guideModal');
+    const modalContent = modal.querySelector('.bg-white');
+    
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+    
+    // 添加入场动画
+    modalContent.style.opacity = '0';
+    modalContent.style.transform = 'scale(0.95)';
+    
+    setTimeout(() => {
+        modalContent.style.transition = 'all 0.3s ease-out';
+        modalContent.style.opacity = '1';
+        modalContent.style.transform = 'scale(1)';
+    }, 10);
+}
+
+function hideGuide() {
+    const modal = document.getElementById('guideModal');
+    const modalContent = modal.querySelector('.bg-white');
+    
+    // 添加退场动画
+    modalContent.style.transition = 'all 0.2s ease-in';
+    modalContent.style.opacity = '0';
+    modalContent.style.transform = 'scale(0.95)';
+    
+    setTimeout(() => {
+        modal.classList.add('hidden');
+        modal.classList.remove('flex');
+        // 重置样式以便下次显示
+        modalContent.style.opacity = '';
+        modalContent.style.transform = '';
+    }, 200);
+}
 
 initWasm(); 
 
@@ -316,4 +422,16 @@ function importTasks() {
     };
     
     input.click();
+} 
+
+function showGuide() {
+    const modal = document.getElementById('guideModal');
+    modal.classList.remove('hidden');
+    modal.classList.add('flex');
+}
+
+function hideGuide() {
+    const modal = document.getElementById('guideModal');
+    modal.classList.add('hidden');
+    modal.classList.remove('flex');
 } 
