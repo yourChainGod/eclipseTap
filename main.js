@@ -2,12 +2,34 @@ let wasmInstance;
 let currentEditingTask = null;
 let grassUpdateIntervals = {};  // 存储每个任务的更新定时器
 let isGuideExpanded = true;
+let wasmLoaded = false;
 
 async function initWasm() {
     const go = new Go();
     const result = await WebAssembly.instantiateStreaming(fetch("main.wasm"), go.importObject);
     wasmInstance = result.instance;
     go.run(wasmInstance);
+    wasmLoaded = true;
+}
+
+function waitForWasm(timeout = 10000) {
+    return new Promise((resolve, reject) => {
+        if (wasmLoaded) {
+            resolve();
+            return;
+        }
+        
+        const startTime = Date.now();
+        const checkInterval = setInterval(() => {
+            if (wasmLoaded) {
+                clearInterval(checkInterval);
+                resolve();
+            } else if (Date.now() - startTime > timeout) {
+                clearInterval(checkInterval);
+                reject(new Error('WASM 加载超时'));
+            }
+        }, 100);
+    });
 }
 
 function showModal(taskId = null) {
@@ -17,7 +39,7 @@ function showModal(taskId = null) {
     if (taskId) {
         // 编辑模式，先停止任务
         toggleTask(taskId);
-        modalTitle.textContent = '编辑任务';
+        modalTitle.textContent = t('editTask');
         currentEditingTask = taskId;
         // 填充现有数据
         const taskCard = document.getElementById(taskId);
@@ -31,7 +53,7 @@ function showModal(taskId = null) {
         document.getElementById('maxDelay').value = delays[1];
     } else {
         // 新建模式
-        modalTitle.textContent = '新建任务';
+        modalTitle.textContent = t('newTask');
         currentEditingTask = null;
         clearForm();
     }
@@ -55,7 +77,7 @@ function submitTask() {
     const maxDelay = parseInt(document.getElementById('maxDelay').value);
 
     if (!mainAddress || !userPrivateKey) {
-        alert('请填写完整信息');
+        alert(t('fillAll'));
         return;
     }
 
@@ -70,14 +92,21 @@ function submitTask() {
     hideModal();
 }
 
-function createTask(mainAddress, userPrivateKey, minDelay, maxDelay) {
+async function createTask(mainAddress, userPrivateKey, minDelay, maxDelay) {
+    try {
+        await waitForWasm();
+    } catch (error) {
+        console.error('WASM 未就绪:', error);
+        throw new Error('系统未就绪，请稍后重试');
+    }
+
     const taskId = 'task-' + Date.now();
     const taskCard = createTaskCard(taskId, mainAddress, minDelay, maxDelay);
     
-    const addCard = document.querySelector('.add-card');
+    const addCard = document.querySelector('[onclick="showModal()"]');
     document.getElementById('taskGrid').insertBefore(taskCard, addCard);
     
-    // 保存私钥到DOM元素（实际应用中建议使用更安全的方式）
+    // 保存私钥到DOM元素
     taskCard.setAttribute('data-address', mainAddress);
     taskCard.setAttribute('data-private-key', userPrivateKey);
     taskCard.setAttribute('data-delays', `${minDelay}-${maxDelay}`);
@@ -88,7 +117,7 @@ function createTask(mainAddress, userPrivateKey, minDelay, maxDelay) {
     // 启动草的数量更新
     setTimeout(() => {
         startGrassUpdate(taskId);
-    }, 2000); // 等待2秒后开始更新，确保任务已经启动
+    }, 2000);
 }
 
 function updateTask(taskId, mainAddress, userPrivateKey, minDelay, maxDelay) {
@@ -128,25 +157,27 @@ function createTaskCard(taskId, mainAddress, minDelay, maxDelay) {
         <div class="flex items-center justify-between">
             <h3 class="text-lg font-semibold text-gray-800 flex items-center">
                 <span class="material-icons mr-2 text-blue-500">task_alt</span>
-                任务 ${taskId.split('-')[1]}
+                <span class="task-title">
+                    <span class="task-text">${t('task')}</span> ${taskId.split('-')[1]}
+                </span>
             </h3>
             <span class="status-running px-3 py-1 text-sm rounded-full bg-green-100 text-green-800 flex items-center">
                 <span class="material-icons text-sm mr-1">radio_button_checked</span>
-                运行中
+                ${t('running')}
             </span>
         </div>
         <div class="space-y-3">
             <p class="text-gray-600 flex items-center">
                 <span class="material-icons text-sm mr-2">account_balance_wallet</span>
-                地址: ${mainAddress.slice(0, 6)}...${mainAddress.slice(-4)}
+                <span class="address-text">${t('address')}: ${mainAddress.slice(0, 6)}...${mainAddress.slice(-4)}</span>
             </p>
             <p class="text-gray-600 flex items-center">
                 <span class="material-icons text-sm mr-2">timer</span>
-                延迟: ${minDelay}-${maxDelay}ms
+                <span class="delay-text">${t('delay')}: ${minDelay}-${maxDelay}ms</span>
             </p>
             <div class="flex items-center space-x-2 bg-gray-50 p-3 rounded-lg">
                 <span class="material-icons text-green-600">grass</span>
-                <span class="text-gray-600">草的数量:</span>
+                <span class="text-gray-600 grass-text">${t('grassAmount')}:</span>
                 <span class="text-lg font-semibold text-green-600" id="grass-${taskId}">0</span>
             </div>
         </div>
@@ -155,13 +186,13 @@ function createTaskCard(taskId, mainAddress, minDelay, maxDelay) {
                     class="toggle-btn mui-btn flex-1 px-4 py-2 rounded-md flex items-center justify-center transition-all duration-200
                            text-white bg-red-500 hover:bg-red-600 focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-offset-2">
                 <span class="material-icons text-sm mr-2">stop</span>
-                停止
+                ${t('stop')}
             </button>
             <button onclick="showModal('${taskId}')" 
                     class="mui-btn flex-1 px-4 py-2 rounded-md flex items-center justify-center transition-all duration-200
                            text-white bg-blue-500 hover:bg-blue-600 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2">
                 <span class="material-icons text-sm mr-2">edit</span>
-                编辑
+                <span class="edit-text">${t('edit')}</span>
             </button>
         </div>
     `;
@@ -386,7 +417,7 @@ function importTasks() {
                 const config = JSON.parse(event.target.result);
                 
                 // 确认导入
-                if (!confirm(`确认导入 ${config.tasks.length} 个任务配置？`)) {
+                if (!confirm(`${t('importConfirm', config.tasks.length)}`)) {
                     return;
                 }
                 
@@ -400,22 +431,38 @@ function importTasks() {
                 });
                 
                 // 创建新任务
+                let importedCount = 0;
+                let errors = [];
+                
                 for (const task of config.tasks) {
-                    createTask(
-                        task.address,
-                        task.privateKey,
-                        task.delays[0],
-                        task.delays[1]
-                    );
+                    try {
+                        await createTask(
+                            task.address,
+                            task.privateKey,
+                            task.delays[0],
+                            task.delays[1]
+                        );
+                        importedCount++;
+                    } catch (err) {
+                        errors.push(err.message);
+                    }
                     // 添加延迟以避免并发问题
                     await new Promise(resolve => setTimeout(resolve, 500));
                 }
                 
-                alert('任务导入完成！');
+                if (importedCount > 0) {
+                    if (errors.length > 0) {
+                        alert(`${t('importPartialSuccess', importedCount, config.tasks.length)}\n${errors.join('\n')}`);
+                    } else {
+                        alert(t('importSuccess'));
+                    }
+                } else {
+                    alert(t('importError'));
+                }
                 
             } catch (error) {
                 console.error('导入配置失败:', error);
-                alert('导入配置失败，请检查文件格式是否正确！');
+                alert(t('importError'));
             }
         };
         reader.readAsText(file);
@@ -434,4 +481,12 @@ function hideGuide() {
     const modal = document.getElementById('guideModal');
     modal.classList.add('hidden');
     modal.classList.remove('flex');
+}
+
+function copyToClipboard(text) {
+    navigator.clipboard.writeText(text).then(() => {
+        alert(t('codeCopied')); // 需要在 i18n.js 中添加这个翻译
+    }).catch(err => {
+        console.error('复制失败:', err);
+    });
 } 
