@@ -36,6 +36,8 @@
 
 ```bash
 git clone https://github.com/yourChainGod/eclipseTap.git
+cd eclipseTap
+go mod tidy
 ```
 
 2. 编译 WebAssembly：
